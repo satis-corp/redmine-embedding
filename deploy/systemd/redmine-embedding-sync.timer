@@ -1,0 +1,17 @@
+# 同期バッチの定期実行。置き場所: /etc/systemd/system/redmine-embedding-sync.timer
+# 有効化: sudo systemctl enable --now redmine-embedding-sync.timer
+# 次回実行の確認: systemctl list-timers redmine-embedding-sync.timer
+[Unit]
+Description=Run redmine-embedding sync nightly
+
+[Timer]
+# 既定: 毎日 03:00（サーバーのローカル時刻）。変更は OnCalendar を書き換える。
+# 例: 6 時間ごと = OnCalendar=*-*-* 00/6:00:00 / 平日 02:30 = OnCalendar=Mon..Fri 02:30
+OnCalendar=*-*-* 03:00:00
+# 停止中に時刻を過ぎていたら、起動後に実行する。
+Persistent=true
+# 複数台が同時に始めないよう最大 10 分ずらす。
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,332 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "redmine-embedding 設定ファイル",
+  "description": "git に載せる設定を JSON で管理する。git に載せない項目（REDMINE_URL / REDMINE_API_KEY / DATABASE_URL）は環境変数（.env）にだけ書き、ここには書けない。書いたキーだけが既定値を上書きする。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema の場所（任意。エディタ補完用）。"
+    },
+    "embedding_model": {
+      "type": "string",
+      "minLength": 1,
+      "default": "cl-nagoya/ruri-v3-130m",
+      "description": "埋め込みモデル名（Hugging Face のモデル ID）。変更すると既存の索引とベクトル次元が合わなくなるため、DB を作り直すこと。大きいモデルほど精度が上がる可能性があるが遅く、メモリも使う。"
+    },
+    "embedding_device": {
+      "type": "string",
+      "pattern": "^(cpu|cuda(:[0-9]+)?|mps)$",
+      "default": "cpu",
+      "description": "埋め込みを実行するデバイス。cpu / cuda / cuda:N / mps。GPU を使うと速いが、その環境に対応したライブラリが必要。"
+    },
+    "redmine_timeout": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 600,
+      "default": 30.0,
+      "description": "Redmine API 1 リクエストのタイムアウト秒数。大きくすると遅い応答に耐えるが、障害時の待ちが長くなる。小さくすると誤ってタイムアウトしやすい。"
+    },
+    "redmine_max_retries": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 3,
+      "description": "Redmine API が一時的に失敗したときの再試行回数。大きくすると一時障害に強いが、障害時の同期が長引く。0 で再試行しない。"
+    },
+    "reconcile_apply_deletions": {
+      "type": "boolean",
+      "default": false,
+      "description": "突き合わせ（reconcile）で、アーカイブ済みプロジェクト・削除済みレコードのチャンクを実際に削除するか。false は dry-run（報告のみ）。dry-run の報告を人が確認してから true にする。--apply-deletions 引数でも実行時に指定できる。"
+    },
+    "chunk_max_chars": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 20000,
+      "default": 1000,
+      "description": "1 チャンクの最大文字数。大きくすると文脈が多く残るが埋め込みが粗くなりモデル入力長を超えやすい。小さくすると検索粒度は細かくなるがチャンク数・保存量が増える。"
+    },
+    "sync_overlap_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1440,
+      "default": 10,
+      "description": "差分同期で前回同期時刻からさかのぼって再取得する分数。大きくすると取りこぼしは減るが再処理が増える。小さくすると速いが同期中の更新を取りこぼしやすい（upsert は冪等）。"
+    },
+    "embed_flush_size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096,
+      "default": 64,
+      "description": "まとめて埋め込みに渡すチャンク数。大きくすると CPU では速くなるがメモリ使用量が増える。小さくするとメモリは減るが遅くなる。"
+    },
+    "embedding_batch_size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1024,
+      "default": 16,
+      "description": "埋め込みモデルの 1 回の推論バッチ数。大きくするとスループットは上がるがメモリを多く使う。小さくすると省メモリだが遅い。"
+    },
+    "attachment_max_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 104857600,
+      "default": 2097152,
+      "description": "テキスト抽出の対象にする添付ファイルの最大バイト数。超えるファイルはダウンロードせずファイル名・説明のみ索引する。大きくすると検索対象は増えるが時間とメモリがかかる。"
+    },
+    "attachment_text_max_chars": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000000,
+      "default": 200000,
+      "description": "1 添付ファイルから取り込むテキストの最大文字数。超えた分は切り捨てる。大きくするとチャンク数が増える。"
+    },
+    "redmine_request_interval": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 60,
+      "default": 0.0,
+      "description": "Redmine API リクエスト間に挟む待ち秒数。大きくすると Redmine への負荷は下がるが同期が遅くなる。0 は待たない。"
+    },
+    "search_top_k": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "default": 50,
+      "description": "MCP 検索で pgvector から取る候補数。大きくすると権限で除外された後も結果が残りやすいが遅くなる。小さくすると速いが除外後に件数が不足しやすい。"
+    },
+    "visible_projects_cache_ttl": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 86400,
+      "default": 60.0,
+      "description": "ユーザーごとの閲覧可能プロジェクト一覧を再利用する秒数。大きくすると Redmine への問い合わせが減るが権限変更の反映が遅れる。0 でキャッシュしない。"
+    },
+    "visible_projects_cache_max_entries": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "default": 1000,
+      "description": "閲覧可能プロジェクト一覧を保持するユーザー数の上限（古い順に破棄）。大きくするとメモリが増える。小さくすると再取得が増える。"
+    },
+    "search_max_rounds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 3,
+      "description": "可視性確認を通った件数が足りないとき、top_k を倍にして再検索する最大ラウンド数（初回含む。50→100→200）。大きくすると件数が出やすいが遅くなる。暫定値。"
+    },
+    "search_check_max_requests": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "default": 100,
+      "description": "1 回の検索で可視性確認のために Redmine API を呼ぶ回数の上限。超えた分は除外される。大きくすると結果が増えるが Redmine への負荷が増える。暫定値。"
+    },
+    "search_check_workers": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "default": 8,
+      "description": "可視性確認の並列スレッド数。大きくすると速いが Redmine への同時接続が増える。"
+    },
+    "search_default_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 10,
+      "description": "検索結果として返す件数の既定値。暫定値。"
+    },
+    "search_check_cache_ttl": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 3600,
+      "default": 0.0,
+      "description": "可視性確認の判定（可視・不可視）を検索をまたいで再利用する秒数。大きくすると Redmine への問い合わせが減るが権限変更の反映が遅れる。0 でキャッシュしない（既定）。未確認の結果と認証エラーは保存しない。暫定値。"
+    },
+    "search_check_cache_max_entries": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "default": 10000,
+      "description": "可視性確認の判定を保持する件数の上限（古い順に破棄）。大きくするとメモリが増える。小さくすると再確認が増える。暫定値。"
+    },
+    "mcp_host": {
+      "type": "string",
+      "minLength": 1,
+      "default": "127.0.0.1",
+      "description": "MCP サーバーの待受ホスト。既定はローカルのみ。公開する場合は TLS 終端のリバースプロキシを置く。暫定値。"
+    },
+    "mcp_port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 8000,
+      "description": "MCP サーバーの待受ポート。暫定値。"
+    },
+    "search_timeout_seconds": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 600,
+      "default": 20.0,
+      "description": "1 回の検索の時間上限（秒）。超過後は新しい Redmine 問い合わせを始めず、残りを未確認として返す。暫定値。"
+    },
+    "search_max_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50,
+      "description": "検索ツールの limit の上限。暫定値。"
+    },
+    "search_excerpt_chars": {
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 5000,
+      "default": 300,
+      "description": "検索結果の抜粋の最大文字数。暫定値。"
+    },
+    "search_excerpt_mask_credentials": {
+      "type": "boolean",
+      "default": true,
+      "description": "検索結果の抜粋で、認証情報らしい値（PW: 値、パスワード： 値、トークン形式、Bearer/Basic、URL 内の user:pass@、secret/token/api_key = 値、秘密鍵）を伏せる。抜粋にだけ効き、索引（DB・埋め込み）は変えない。"
+    },
+    "mcp_db_pool_max": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "default": 4,
+      "description": "MCP サーバーの DB 接続プールの最大数。暫定値。"
+    },
+    "mcp_embed_concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32,
+      "default": 2,
+      "description": "クエリの埋め込みを同時に実行する数。CPU 実行のため小さくする。暫定値。"
+    },
+    "mcp_redmine_timeout": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 300,
+      "default": 10.0,
+      "description": "MCP サーバーが利用者のトークンで Redmine を呼ぶときのタイムアウト（秒）。バッチ用の redmine_timeout とは別。暫定値。"
+    },
+    "mcp_redmine_max_retries": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 1,
+      "description": "MCP サーバーの Redmine 呼び出しの再試行回数。暫定値。"
+    },
+    "mcp_public_base_url": {
+      "type": "string",
+      "default": "",
+      "description": "MCP サーバーを公開する URL のオリジン（例 https://redmine.example.com。パスは含めない）。空（既定）なら OAuth2 認証を使わない（Authorization ヘッダのトークンをそのまま Redmine に渡す開発用の動作）。設定すると本サーバー自身が OAuth2 認可サーバー兼 Resource Server になる。ホスト名の切替に使う。暫定値。"
+    },
+    "mcp_public_path": {
+      "type": "string",
+      "default": "/mcp-search",
+      "description": "公開パス。MCP エンドポイントは「公開 URL + このパス」、OAuth2 のエンドポイントはその配下（/authorize /token /register /revoke /oauth/callback）。先頭は /、末尾は / にしない。暫定値。"
+    },
+    "mcp_oauth_scopes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "default": [
+        "view_issues",
+        "view_wiki_pages",
+        "view_news",
+        "view_time_entries",
+        "view_files",
+        "view_project"
+      ],
+      "description": "Redmine(Doorkeeper) に要求し、MCP の利用に必須とするスコープ（Redmine の権限名）。検索（チケット・wiki・news・工数・プロジェクト・プロジェクトのファイル）に必要な権限。news・time_entry・file 用の 3 つと view_project（project と file の確認に必要。Redmine は公開権限もスコープに列挙したものだけに絞る）を含む。トークンがこれを持たないと 403。"
+    },
+    "mcp_oauth_introspect_cache_ttl": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 600,
+      "default": 30.0,
+      "description": "Redmine の introspect 結果（有効なもののみ）を再利用する秒数。トークンのハッシュをキーにし、トークンの exp を超えない。大きくすると失効の反映が遅れる。0 でキャッシュしない。決定済み: 30。"
+    },
+    "mcp_oauth_access_token_ttl": {
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 86400,
+      "default": 3600,
+      "description": "本サーバーが発行するアクセストークンの有効秒数。上流（Redmine）のトークンの期限とは独立で、上流は期限切れ時にサーバー側でリフレッシュする。暫定値。"
+    },
+    "mcp_oauth_refresh_token_ttl": {
+      "type": "integer",
+      "minimum": 3600,
+      "maximum": 31536000,
+      "default": 2592000,
+      "description": "本サーバーが発行するリフレッシュトークン（と、暗号化して保存する上流トークン）の保存期間（秒）。既定 30 日。暫定値。"
+    },
+    "mcp_oauth_client_retention_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3650,
+      "default": 90,
+      "description": "DCR で登録されたクライアントを、最後に使われてから何日で削除対象にするか（有効なトークンを持つものは対象外）。暫定値。"
+    },
+    "mcp_oauth_cleanup_apply": {
+      "type": "boolean",
+      "default": false,
+      "description": "期限切れ・失効した認可コード/state/トークン/未使用クライアントを実際に削除するか。false は dry-run（件数をログに出すだけ）。期限切れの行は検証で無視されるので、false でも動作は安全。件数を確認してから true にする。"
+    },
+    "mcp_oauth_cleanup_interval": {
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 86400,
+      "default": 3600,
+      "description": "期限切れデータの掃除（または dry-run の件数報告）を行う間隔（秒）。暫定値。"
+    },
+    "mcp_oauth_max_clients": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "default": 1000,
+      "description": "直近 24 時間以内に使われ、有効なトークンを持たない DCR クライアントの全体上限。期限切れ・長期間未使用の行は数えない（登録の拒否が続かない）。超えると新規登録を拒否する。暫定値。"
+    },
+    "mcp_oauth_max_pending_requests": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "default": 1000,
+      "description": "進行中（期限内）の認可リクエストの上限。超えると /authorize を一時拒否する。暫定値。"
+    },
+    "mcp_oauth_rate_limit_per_minute": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000,
+      "default": 20,
+      "description": "/register と /authorize それぞれの、接続元 IP あたり 1 分間の回数上限（プロセス内の簡易制限。リバースプロキシ配下では X-Forwarded-For の接続元）。暫定値。"
+    },
+    "mcp_oauth_max_clients_per_ip": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "default": 50,
+      "description": "上記を登録元 IP ごとに数えた上限（少数の IP が全体枠を埋めないようにする）。暫定値。"
+    },
+    "mcp_oauth_max_pending_per_ip": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "default": 20,
+      "description": "進行中（期限内）の認可リクエストの、開始元 IP ごとの上限。暫定値。"
+    },
+    "mcp_oauth_refresh_grace_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600,
+      "default": 30,
+      "description": "使用済みのリフレッシュトークンが、使用後この秒数以内に同じクライアントから再提示されたときは、グラントを失効させず invalid_grant を返す（応答喪失の再試行・並行リフレッシュの救済）。過ぎた再提示は再利用とみなしグラントごと失効する。0 で猶予なし。決定済み: 30。"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+# MCP サーバー（Streamable HTTP + OAuth2）の systemd ユニット例。
+# 置き場所: /etc/systemd/system/redmine-embedding-mcp.service
+# 反映: sudo systemctl daemon-reload && sudo systemctl enable --now redmine-embedding-mcp
+# <...> と下記の既定パスは自環境に合わせて書き換える。
+[Unit]
+Description=redmine-embedding MCP server
+# DB は docker/ の pgvector コンテナが標準。docker.service の後に起動する(順序のみ。DB 未起動でも Restart で回復する)
+After=network.target docker.service
+
+[Service]
+Type=simple
+# 専用ユーザー（事前に作る。例: sudo useradd --system --home /opt/redmine-embedding --shell /usr/sbin/nologin redmine-embedding）
+User=redmine-embedding
+Group=redmine-embedding
+# .env（REDMINE_URL / DATABASE_URL / REDMINE_OAUTH_CLIENT_ID / REDMINE_OAUTH_CLIENT_SECRET / MCP_OAUTH_ENCRYPTION_KEY）を置く。
+# 権限は 600 にし、git に入れない。値は journal にも出ない。
+WorkingDirectory=/opt/redmine-embedding
+EnvironmentFile=/etc/redmine-embedding/mcp.env
+# 埋め込みモデルは配備前に取得済みにして、実行時にネットワークへ取りに行かせない。
+Environment=HF_HUB_OFFLINE=1
+# --env prod は config/settings.prod.json（自分で作る）を使う（OAuth2 必須なので mcp_public_base_url を必ず設定する。mcp_public_path / mcp_port なども書く）。
+ExecStart=/opt/redmine-embedding/.venv/bin/redmine-embedding-mcp --env prod
+Restart=on-failure
+RestartSec=5
+# メモリの目安: 埋め込みモデル（既定 ruri-v3-130m, CPU）の読み込みで数百 MB〜1GB 前後。
+# 起動に 6〜13 秒（キャッシュ済みの実測。初回やディスクが遅い環境では 30〜40 秒）。小さいサーバーでは同期バッチと同時に動かさない。必要なら次を有効にする。
+#MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

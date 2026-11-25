@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+.env
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+CACHEDIR.TAG
+localbackups/
+# 環境別の設定 JSON（config/settings.<環境>.json）は git 管理する。
+# 無視するのは、環境ごとの切り替え指定と手元用の一時上書きだけ。
+config/active
+config/*.local.json
